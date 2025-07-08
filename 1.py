@@ -9,73 +9,91 @@ import pyodbc
 from PIL import Image, ImageDraw, ImageFont
 from pylibdmtx.pylibdmtx import encode
 import io
-from pylibdmtx.wrapper import LibDmtx
+from reportlab.lib.pagesizes import mm
+from reportlab.pdfgen import canvas
+from reportlab.lib.utils import ImageReader
+from io import BytesIO
+from PIL import Image
 
-dmtx = LibDmtx(dll_path='\\env\Lib\site-packages\pylibdmtx\\libdmtx-64.dll')
 # Convert mm to pixels
 def mm_to_px(mm,dpi):
     return int((mm / 25.4) * dpi)
     
-def save_pdf():
-    # Label dimensions in mm
-    label_width_mm = 49
-    label_height_mm = 9
-    dpi = 300  # print resolution
+def save_pdf(data_list, output_pdf="labels.pdf"):
     
-        # Sizes in pixels
-    label_w = mm_to_px(label_width_mm,dpi)
-    label_h = mm_to_px(label_height_mm,dpi)
-    text_w = mm_to_px(39,dpi)
-    dm_size = mm_to_px(8,dpi)
-
-    # Font setup (fallback to default if Arial not found)
-    try:
-        font_path = "arial.ttf"  # You can replace this with a path to any .ttf font
-        base_font = ImageFont.truetype(font_path, size=60)
-    except:
-        base_font = ImageFont.load_default()
-
-    data_list = ["71A05/X1", "X1824"]
-    label_images = []
-
-    for text in data_list:
-        # Create blank white label
-        img = Image.new("RGB", (label_w, label_h), "white")
-        draw = ImageDraw.Draw(img)
-
-        # Fit the text into text_w width
-        font_size = 60
-        while font_size > 5:
-            font = ImageFont.truetype(font_path, size=font_size)
-            bbox = draw.textbbox((0, 0), text, font=font)
-            text_width = bbox[2] - bbox[0]
-            if text_width <= text_w:
-                break
-            font_size -= 1
-
-        # Calculate Y centering
-        bbox = draw.textbbox((0, 0), text, font=font)
-        text_height = bbox[3] - bbox[1]
-        text_y = (label_h - text_height) // 2
-
-        # Draw the text on the left
-        draw.text((10, text_y), text, font=font, fill="black")
-
-        # Generate Data Matrix code
-        encoded = encode(text.encode("utf-8"))
-        dm_img = Image.open(io.BytesIO(encoded.png)).convert("RGB")
-        dm_img = dm_img.resize((dm_size, dm_size), Image.LANCZOS)
-
-        # Paste the Data Matrix code on the right side, centered vertically
-        dm_x = label_w - dm_size - 10
-        dm_y = (label_h - dm_size) // 2
-        img.paste(dm_img, (dm_x, dm_y))
-
-        label_images.append(img)
-
-    # Save as multipage PDF
-    label_images[0].save("labels_no_reportlab.pdf", save_all=True, append_images=label_images[1:])
-    print("PDF saved as 'labels_no_reportlab.pdf'")
+    # Label dimensions
+    label_width = 49 * mm
+    label_height = 9 * mm
+    
+    # Text area dimensions
+    text_width = 39 * mm
+    text_height = 9 * mm  # Available height for text
+    
+    # Data matrix dimensions
+    dm_width = 10 * mm
+    dm_height = 10 * mm
+    
+    # Create PDF
+    c = canvas.Canvas(output_pdf, pagesize=(label_width, label_height))
+    
+    for index, item in enumerate(data_list):
+        # Start new page for each label
+        c.setPageSize((label_width, label_height))
+        
+        # TEXT (Left side)
+        font_size = 6
+        c.setFont("Helvetica", font_size)
+        
+        # Adjust font size if needed
+        while c.stringWidth(item, "Helvetica", font_size) > text_width - 2*mm and font_size > 3:
+            font_size -= 0.5
+        
+        # Calculate text metrics for vertical centering
+        text_width_actual = c.stringWidth(item, "Helvetica", font_size)
+        text_height_actual = font_size * 1.2  # Approximate text height
+        
+        # Calculate horizontal centering for text
+        text_x = (text_width - text_width_actual) / 2
+        
+        # Calculate vertical centering - accounts for actual text height
+        vertical_offset = (label_height - text_height_actual) / 2
+        
+        # Draw centered text (both horizontally and vertically)
+        c.setFont("Helvetica", font_size)
+        c.drawString(text_x, vertical_offset, item)
+        
+        # Generate DataMatrix barcode
+        encoded = encode(
+            item.encode('utf-8'),
+            size='SquareAuto'
+        )
+        
+        # Create PIL Image
+        img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
+        
+        # Prepare image for PDF
+        img_buffer = BytesIO()
+        img.save(img_buffer, format='PNG', dpi=(300, 300))
+        img_buffer.seek(0)
+        
+        # BARCODE (Right side) - Centered vertically with text
+        dm_x = label_width - dm_width - 1 * mm
+        dm_y = (label_height - dm_height) / 2  # Center vertically
+        
+        # Add to PDF
+        c.drawImage(
+            ImageReader(img_buffer),
+            dm_x, dm_y,
+            width=dm_width,
+            height=dm_height,
+            preserveAspectRatio=True,
+            mask='auto'
+        )
+        
+        c.showPage()
+    
+    c.save()
+    print(f"PDF with perfectly centered labels created: {output_pdf}")
     
 # Application settings
 SETTINGS = QSettings("Xpps user", "Password")
@@ -131,6 +149,9 @@ class MyApp(QWidget):
 
     def setup_ui(self):
         self.xvk = ""
+        self.modul =""
+        self.to_print_all = []
+        self.deget = {}
         # Layouts
         main_layout = QVBoxLayout()
         top_bar = QHBoxLayout()
@@ -163,11 +184,15 @@ class MyApp(QWidget):
         self.reset_button.clicked.connect(self.reset)
         
         self.ruaj_button = QPushButton("Ruaj PDF")
-        self.ruaj_button.clicked.connect(save_pdf)
+        self.ruaj_button.clicked.connect(self.save_pdf_button)
+        
+        self.modul_button = QPushButton("Krijo PDF per modulin")
+        self.modul_button.clicked.connect(self.save_pdf_modul)
         
         button_layout.addWidget(self.submit_button)
         button_layout.addWidget(self.reset_button)
         button_layout.addWidget(self.ruaj_button)
+        button_layout.addWidget(self.modul_button)
         
         # List Widget
         self.list_widget = QListWidget()
@@ -181,7 +206,21 @@ class MyApp(QWidget):
         main_layout.addLayout(button_layout)
 
         self.setLayout(main_layout)
+        
+    def save_pdf_button(self):
+        if self.xvk and self.to_print_all:
+            save_pdf(self.to_print_all,self.xvk +'.pdf')
+        else:
+            QMessageBox.warning(self, "Mungojne te dhenat", "Ju lutem plotesoni XVK")
+    
+    def save_pdf_modul(self):
+        if self.modul and self.deget:
+            save_pdf(sorted(self.deget[self.modul].keys()),self.xvk+"-"+ self.modul +"-" +'.pdf')
+        else:
+            QMessageBox.warning(self, "Mungojne te dhenat", "Ju lutem Zgjidhni modulin")
+    
     def module_selected(self, item):
+        self.modul = item.text()
         print(f"Clicked item text: {item.text()}")
         
     def apply_styles(self):
@@ -346,6 +385,8 @@ class MyApp(QWidget):
                             m_d[row.Moduli][row.Nga_dega] = 1
                             m_d[row.Moduli][row.Tek_dega] = 1
                         # print(f"Nga_dega: {row.Nga_dega}, Tek_dega: {row.Tek_dega}")
+                    self.to_print_all = sorted(dega.keys())
+                    self.deget = m_d
                     for key in sorted(module_list):
                         self.list_widget.addItem(QListWidgetItem(key))
                 except pyodbc.Error as e:
@@ -366,6 +407,10 @@ class MyApp(QWidget):
             # QMessageBox.information(self, "Submitted", f"You entered: {text}\nOption: {option}")
 
     def reset(self):
+        self.xvk = ""
+        self.modul =""
+        self.to_print_all = []
+        self.deget = {}
         self.input_field.clear()
         self.list_widget.clear()
 

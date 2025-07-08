@@ -8,8 +8,10 @@ import os,sys
 import pyodbc
 from PIL import Image, ImageDraw, ImageFont
 from pylibdmtx.pylibdmtx import encode
-import io,treepoem
+import io
+from pylibdmtx.wrapper import LibDmtx
 
+dmtx = LibDmtx(dll_path='\\env\Lib\site-packages\pylibdmtx\\libdmtx-64.dll')
 # Convert mm to pixels
 def mm_to_px(mm,dpi):
     return int((mm / 25.4) * dpi)

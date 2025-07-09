@@ -8,21 +8,183 @@ from PyQt5 import QtGui
 import os,sys
 import pyodbc
 from PIL import Image, ImageDraw, ImageFont
-
+from pylibdmtx.pylibdmtx import encode
 import io
 from reportlab.lib.pagesizes import mm
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from io import BytesIO
 from PIL import Image
+import tempfile,time
 
 # Convert mm to pixels
 def mm_to_px(mm,dpi):
     return int((mm / 25.4) * dpi)
+def print_pdf(data_list, output_pdf,nr_copies):
+        # Label dimensions
+    label_width = 49 * mm
+    label_height = 9 * mm
     
+    # Text area dimensions
+    text_width = 39 * mm
+    text_height = 9 * mm  # Available height for text
+    
+    # Data matrix dimensions
+    dm_width = 10 * mm
+    dm_height = 10 * mm
+    # Create temporary PDF file (kept open to prevent deletion)
+    temp_pdf = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+    temp_pdf_path = temp_pdf.name
+    temp_pdf.close()  # Close handle so Sumatra can access it
+    try:
+        # Create PDF
+        c = canvas.Canvas(temp_pdf_path, pagesize=(label_width, label_height))
+        temp_pdf = tempfile.NamedTemporaryFile(suffix='.pdf', delete=False)
+        temp_pdf.close()
+        for i in range(nr_copies):
+        
+            for index, item in enumerate(data_list):
+                # Start new page for each label
+                c.setPageSize((label_width, label_height))
+                
+                # TEXT (Left side)
+                font_size = 6
+                c.setFont("Helvetica", font_size)
+                
+                # Adjust font size if needed
+                while c.stringWidth(item, "Helvetica", font_size) > text_width - 2*mm and font_size > 3:
+                    font_size -= 0.5
+                
+                # Calculate text metrics for vertical centering
+                text_width_actual = c.stringWidth(item, "Helvetica", font_size)
+                text_height_actual = font_size * 1.2  # Approximate text height
+                
+                # Calculate horizontal centering for text
+                text_x = 2*mm
+                
+                # Calculate vertical centering - accounts for actual text height
+                vertical_offset = (label_height - text_height_actual) / 2
+                
+                # Draw centered text (both horizontally and vertically)
+                c.setFont("Helvetica", font_size)
+                c.drawString(text_x, vertical_offset, item)
+                
+                # Generate DataMatrix barcode
+                encoded = encode(
+                    item.encode('utf-8'),
+                    size='SquareAuto'
+                )
+                
+                # Create PIL Image
+                img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
+                
+                # Prepare image for PDF
+                img_buffer = BytesIO()
+                img.save(img_buffer, format='PNG', dpi=(300, 300))
+                img_buffer.seek(0)
+                
+                # BARCODE (Right side) - Centered vertically with text
+                dm_x = label_width - dm_width - 1 * mm
+                dm_y = (label_height - dm_height) / 2  # Center vertically
+                
+                # Add to PDF
+                c.drawImage(
+                    ImageReader(img_buffer),
+                    dm_x, dm_y,
+                    width=dm_width,
+                    height=dm_height,
+                    preserveAspectRatio=True,
+                    mask='auto'
+                )
+                
+                c.showPage()
+        
+        c.save()
+        temp_pdf.close()
+        time.sleep(0.5)
+        os.startfile(temp_pdf_path, 'print')
+    except Exception as e:
+        print(f"Printing failed: {str(e)}")
+    finally:
+        try:
+            os.unlink(temp_pdf.name)
+        except:
+            pass
+
 def save_pdf(data_list, output_pdf,nr_copies):
+        # Label dimensions
+    label_width = 49 * mm
+    label_height = 9 * mm
+    
+    # Text area dimensions
+    text_width = 39 * mm
+    text_height = 9 * mm  # Available height for text
+    
+    # Data matrix dimensions
+    dm_width = 10 * mm
+    dm_height = 10 * mm
+    
+    # Create PDF
+    c = canvas.Canvas(output_pdf, pagesize=(label_width, label_height))
     for i in range(nr_copies):
-        print(i,data_list)
+    
+        for index, item in enumerate(data_list):
+            # Start new page for each label
+            c.setPageSize((label_width, label_height))
+            
+            # TEXT (Left side)
+            font_size = 6
+            c.setFont("Helvetica", font_size)
+            
+            # Adjust font size if needed
+            while c.stringWidth(item, "Helvetica", font_size) > text_width - 2*mm and font_size > 3:
+                font_size -= 0.5
+            
+            # Calculate text metrics for vertical centering
+            text_width_actual = c.stringWidth(item, "Helvetica", font_size)
+            text_height_actual = font_size * 1.2  # Approximate text height
+            
+            # Calculate horizontal centering for text
+            text_x = 2*mm
+            
+            # Calculate vertical centering - accounts for actual text height
+            vertical_offset = (label_height - text_height_actual) / 2
+            
+            # Draw centered text (both horizontally and vertically)
+            c.setFont("Helvetica", font_size)
+            c.drawString(text_x, vertical_offset, item)
+            
+            # Generate DataMatrix barcode
+            encoded = encode(
+                item.encode('utf-8'),
+                size='SquareAuto'
+            )
+            
+            # Create PIL Image
+            img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
+            
+            # Prepare image for PDF
+            img_buffer = BytesIO()
+            img.save(img_buffer, format='PNG', dpi=(300, 300))
+            img_buffer.seek(0)
+            
+            # BARCODE (Right side) - Centered vertically with text
+            dm_x = label_width - dm_width - 1 * mm
+            dm_y = (label_height - dm_height) / 2  # Center vertically
+            
+            # Add to PDF
+            c.drawImage(
+                ImageReader(img_buffer),
+                dm_x, dm_y,
+                width=dm_width,
+                height=dm_height,
+                preserveAspectRatio=True,
+                mask='auto'
+            )
+            
+            c.showPage()
+    
+    c.save()
     
 # Application settings
 SETTINGS = QSettings("Forschner", "Label dege")
@@ -232,13 +394,13 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
     def one(self):
         text = self.one_field.text().strip()
         l = [text]
-        save_pdf(l,'1.pdf',1)
+        print_pdf(l,'1.pdf',1)
     def save_pdf_modul(self):
         if self.modul and self.deget:
             l = sorted(self.deget[self.modul].keys())
             l.append(self.modul)
             nr_copies =  self.copies_input.value()
-            save_pdf(l,self.xvk+"-"+ self.modul +"-" +'.pdf',nr_copies)
+            print_pdf(l,self.xvk+"-"+ self.modul +"-" +'.pdf',nr_copies)
         else:
             if self.module_field.text().strip():
                 self.dege_modul()
@@ -252,6 +414,9 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
         print(f"Clicked item text: {item.text()}")
         
     def dege_modul(self):
+        nr_copies =  self.copies_input.value()
+        # print_pdf(["111"],str(self.module_field.text().strip()) +'.pdf',nr_copies)
+        # return None
         dega ={}
         text01 = "'" + str(self.module_field.text().strip()) + "'"
         # text01 = "'444000801015'"
@@ -286,10 +451,11 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
             for d in dega.keys():
                 l.append(d)
             l.append(str(self.module_field.text().strip()))
-            save_pdf(l,str(self.module_field.text().strip()) +'.pdf',nr_copies)
+            
+            print_pdf(l,str(self.module_field.text().strip()) +'.pdf',nr_copies)
         except pyodbc.Error as e:
             print("Database error:", e)
-
+            QMessageBox.warning(self, "Database error", str(e))
         finally:
             if 'conn2' in locals():
                 conn2.close()
@@ -388,7 +554,14 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
             dialog.save_settings()
     def print_all(self):
         self.submit()
-        self.save_pdf_button()
+        if self.xvk and self.to_print_all:
+            l = self.to_print_all
+            l.append(self.xvk)
+            nr_copies =  self.copies_input.value()
+            print_pdf(l,self.xvk +'.pdf',nr_copies)
+        else:
+            QMessageBox.warning(self, "Mungojne te dhenat", "Ju lutem plotesoni XVK")
+        
     def submit(self):
         text = self.input_field.text().strip()
         self.xvk = text
@@ -468,12 +641,14 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
                     for key in sorted(module_list):
                         self.list_widget.addItem(QListWidgetItem(key))
                 except pyodbc.Error as e:
+                    QMessageBox.warning(self, "Database error", str(e))
                     print("Database error:", e)
 
                 finally:
                     if 'conn2' in locals():
                         conn2.close()
             except pyodbc.Error as e:
+                QMessageBox.warning(self, "Database error", str(e))
                 print("Database error:", e)
 
             finally:
@@ -494,6 +669,20 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
         self.deget = {}
         self.input_field.clear()
         self.list_widget.clear()
+def set_qt_plugin_path():
+    # Set the QT_PLUGIN_PATH environment variable
+    if getattr(sys, 'frozen', False):
+        # Running in PyInstaller bundle
+        os.environ['QT_PLUGIN_PATH'] = os.path.join(
+            sys._MEIPASS, 'PyQt5', 'Qt', 'plugins'
+        )
+    else:
+        # Running in normal Python environment
+        os.environ['QT_PLUGIN_PATH'] = QLibraryInfo.location(
+            QLibraryInfo.PluginsPath
+        )
+
+set_qt_plugin_path()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)

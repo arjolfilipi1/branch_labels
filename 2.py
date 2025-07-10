@@ -1,7 +1,7 @@
 from PyQt5.QtWidgets import (
     QApplication, QWidget, QPushButton, QLineEdit,
     QVBoxLayout, QHBoxLayout, QComboBox, QLabel, QMessageBox,QDialog,QFormLayout,QDialogButtonBox,QListWidget,
-    QListWidgetItem,QSpinBox,QTextEdit,QScrollArea
+    QListWidgetItem,QSpinBox,QTextEdit,QScrollArea,QCheckBox
 )
 from PyQt5.QtCore import Qt, QStringListModel, QSettings
 from PyQt5 import QtGui
@@ -11,6 +11,7 @@ from PIL import Image
 import io
 from reportlab.lib.pagesizes import mm
 from reportlab.pdfgen import canvas
+from pylibdmtx.pylibdmtx import encode
 from reportlab.lib.utils import ImageReader
 from io import BytesIO
 import tempfile,time
@@ -18,9 +19,8 @@ import qrcode
 import win32api
 import win32print
 # Convert mm to pixels
-def mm_to_px(mm,dpi):
-    return int((mm / 25.4) * dpi)
-def print_pdf(data_list, output_pdf,nr_copies):
+
+def print_pdf(data_list, output_pdf,nr_copies,use_qr):
         # Label dimensions
     label_width = 49 * mm
     label_height = 9 * mm
@@ -68,40 +68,60 @@ def print_pdf(data_list, output_pdf,nr_copies):
                 # Draw centered text (both horizontally and vertically)
                 c.setFont("Helvetica", font_size)
                 c.drawString(text_x, vertical_offset, item)
-                
-                qr = qrcode.QRCode(
-                    version=1,
-                    error_correction=qrcode.constants.ERROR_CORRECT_L,
-                    box_size=10,  # Adjust this to control the size
-                    border=4,
-                )
-                qr.add_data(item.encode('utf-8'))
-                qr.make(fit=True)
+                if use_qr:
+                    try:
+                        qr = qrcode.QRCode(
+                            version=1,
+                            error_correction=qrcode.constants.ERROR_CORRECT_L,
+                            box_size=10,  # Adjust this to control the size
+                            border=4,
+                        )
+                        qr.add_data(item.encode('utf-8'))
+                        qr.make(fit=True)
 
-                # Create PIL Image
-                img = qr.make_image(fill_color="black", back_color="white")
+                        # Create PIL Image
+                        img = qr.make_image(fill_color="black", back_color="white")
 
-                # Prepare image for PDF
-                img_buffer = BytesIO()
-                img.save(img_buffer, format='PNG', dpi=(300, 300))
-                img_buffer.seek(0)
+                        # Prepare image for PDF
+                        img_buffer = BytesIO()
+                        img.save(img_buffer, format='PNG', dpi=(300, 300))
+                        img_buffer.seek(0)
 
-                # BARCODE (Right side) - Centered vertically with text
-                dm_x = label_width - dm_width - 1 * mm
-                dm_y = (label_height - dm_height) / 2  # Center vertically
+                        # BARCODE (Right side) - Centered vertically with text
+                        dm_x = label_width - dm_width - 1 * mm
+                        dm_y = (label_height - dm_height) / 2  # Center vertically
 
-                # Add to PDF
-                c.drawImage(
-                    ImageReader(img_buffer),
-                    dm_x, dm_y,
-                    width=dm_width,
-                    height=dm_height,
-                    preserveAspectRatio=True,
-                    mask='auto'
-                )
-                
-                c.showPage()
-        
+                        # Add to PDF
+                        c.drawImage(
+                            ImageReader(img_buffer),
+                            dm_x, dm_y,
+                            width=dm_width,
+                            height=dm_height,
+                            preserveAspectRatio=True,
+                            mask='auto'
+                        )
+                        
+                        c.showPage()
+                    except Exception as e:
+                        print(f"Printing failed: {str(e)}")
+                else:
+                    try:
+                            # Barcode
+                        encoded = encode(item.encode('utf-8'))
+                        img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
+                        img_buffer = BytesIO()
+                        img.save(img_buffer, format='PNG')
+                        img_buffer.seek(0)
+                        
+                        c.drawImage(ImageReader(img_buffer), 
+                                   49*mm - 10*mm - 1*mm, 
+                                   (9*mm - 8*mm)/2, 
+                                   width=8*mm, 
+                                   height=8*mm,
+                                   preserveAspectRatio=True)
+                        c.showPage()
+                    except Exception as e:
+                        print(f"Printing failed: {str(e)}")
         c.save()
         
         temp_pdf.close()
@@ -117,7 +137,7 @@ def print_pdf(data_list, output_pdf,nr_copies):
         except:
             pass
 
-def save_pdf(data_list, output_pdf,nr_copies):
+def save_pdf(data_list, output_pdf,nr_copies,use_qr):
         # Label dimensions
     label_width = 49 * mm
     label_height = 9 * mm
@@ -160,38 +180,60 @@ def save_pdf(data_list, output_pdf,nr_copies):
             c.setFont("Helvetica", font_size)
             c.drawString(text_x, vertical_offset, item)
             
-            qr = qrcode.QRCode(
-                version=1,
-                error_correction=qrcode.constants.ERROR_CORRECT_L,
-                box_size=10,  # Adjust this to control the size
-                border=4,
-            )
-            qr.add_data(item.encode('utf-8'))
-            qr.make(fit=True)
+            if use_qr:
+                try:
+                    qr = qrcode.QRCode(
+                        version=1,
+                        error_correction=qrcode.constants.ERROR_CORRECT_L,
+                        box_size=10,  # Adjust this to control the size
+                        border=4,
+                    )
+                    qr.add_data(item.encode('utf-8'))
+                    qr.make(fit=True)
 
-            # Create PIL Image
-            img = qr.make_image(fill_color="black", back_color="white")
+                    # Create PIL Image
+                    img = qr.make_image(fill_color="black", back_color="white")
 
-            # Prepare image for PDF
-            img_buffer = BytesIO()
-            img.save(img_buffer, format='PNG', dpi=(300, 300))
-            img_buffer.seek(0)
+                    # Prepare image for PDF
+                    img_buffer = BytesIO()
+                    img.save(img_buffer, format='PNG', dpi=(300, 300))
+                    img_buffer.seek(0)
 
-            # BARCODE (Right side) - Centered vertically with text
-            dm_x = label_width - dm_width - 1 * mm
-            dm_y = (label_height - dm_height) / 2  # Center vertically
+                    # BARCODE (Right side) - Centered vertically with text
+                    dm_x = label_width - dm_width - 1 * mm
+                    dm_y = (label_height - dm_height) / 2  # Center vertically
 
-            # Add to PDF
-            c.drawImage(
-                ImageReader(img_buffer),
-                dm_x, dm_y,
-                width=dm_width,
-                height=dm_height,
-                preserveAspectRatio=True,
-                mask='auto'
-            )
-            
-            c.showPage()
+                    # Add to PDF
+                    c.drawImage(
+                        ImageReader(img_buffer),
+                        dm_x, dm_y,
+                        width=dm_width,
+                        height=dm_height,
+                        preserveAspectRatio=True,
+                        mask='auto'
+                    )
+                    
+                    c.showPage()
+                except Exception as e:
+                    print(f"Printing failed: {str(e)}")
+            else:
+                try:
+                        # Barcode
+                    encoded = encode(item.encode('utf-8'))
+                    img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
+                    img_buffer = BytesIO()
+                    img.save(img_buffer, format='PNG')
+                    img_buffer.seek(0)
+                    
+                    c.drawImage(ImageReader(img_buffer), 
+                               49*mm - 10*mm - 1*mm, 
+                               (9*mm - 8*mm)/2, 
+                               width=8*mm, 
+                               height=8*mm,
+                               preserveAspectRatio=True)
+                    c.showPage()
+                except Exception as e:
+                    print(f"Printing failed: {str(e)}")
     
     c.save()
     
@@ -210,6 +252,11 @@ class SettingsDialog(QDialog):
         # Create a widget to hold the layout
         content_widget = QWidget()
         layout = QFormLayout(content_widget)
+        
+        # use qr
+        self.checkbox = QCheckBox("Use qr", self)
+        checkbox_layout = QHBoxLayout()
+        checkbox_layout.addWidget(self.checkbox)
         
         # Database path
         self.db_path_edit = QLineEdit()
@@ -238,7 +285,6 @@ class SettingsDialog(QDialog):
                   AND STRU.STBGNR = ?
             """
         self.con = "Driver={{IBM i Access ODBC Driver}};System=192.168.100.35;UID={};PWD={};DBQ=QGPL;"
-        
         self.sql_edit = QTextEdit()
         self.sql_edit.setPlaceholderText(self.sql)
         slq_layout = QHBoxLayout()
@@ -271,6 +317,7 @@ class SettingsDialog(QDialog):
         
         
         # Add to form
+        layout.addRow("Perdor qr code:", checkbox_layout)
         layout.addRow("xPPS user:", db_layout)
         layout.addRow("Password:", password_layout)
         layout.addRow("dpi e printerit:", dpi_layout)
@@ -297,6 +344,9 @@ class SettingsDialog(QDialog):
 
     
     def load_settings(self):
+        print(SETTINGS.value("use_qr", False))
+        if SETTINGS.value("use_qr", False) != 'false':
+            self.checkbox.setChecked(True)
         self.db_path_edit.setText(SETTINGS.value("xpps/user", "FILIPI"))
         self.password_edit.setText(SETTINGS.value("xpps/password", "a110033"))
         self.dpi_edit.setText(SETTINGS.value("app/dpi", "300"))
@@ -306,6 +356,8 @@ class SettingsDialog(QDialog):
         self.con2_edit.setPlainText(SETTINGS.value("komax/con", self.con2))
     
     def save_settings(self):
+        print(self.checkbox.isChecked())
+        SETTINGS.setValue("use_qr", self.checkbox.isChecked())
         SETTINGS.setValue("xpps/user", self.db_path_edit.text())
         SETTINGS.setValue("xpps/password", self.password_edit.text())
         SETTINGS.setValue("app/dpi", self.dpi_edit.text())
@@ -325,6 +377,7 @@ class MyApp(QWidget):
     def setup_ui(self):
         printers = win32print.EnumPrinters(2)
         print(printers)
+        self.use_qr = SETTINGS.value("use_qr", False) == 'true'
         self.SQL_TEMPLATE_VODICE = """
 SELECT vodiče.VON AS Nga_dega, KABELY.Forsch_Nr_kabelu AS Moduli, vodiče.BIS AS Tek_dega
 FROM (KABELY 
@@ -452,19 +505,19 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
             l = self.to_print_all
             l.append(self.xvk)
             nr_copies =  self.copies_input.value()
-            save_pdf(l,self.xvk +'.pdf',nr_copies)
+            save_pdf(l,self.xvk +'.pdf',nr_copies,self.use_qr)
         else:
             QMessageBox.warning(self, "Mungojne te dhenat", "Ju lutem plotesoni XVK")
     def one(self):
         text = self.one_field.text().strip()
         l = [text]
-        print_pdf(l,'1.pdf',1)
+        print_pdf(l,'1.pdf',1,self.use_qr)
     def save_pdf_modul(self):
         if self.modul and self.deget:
             l = sorted(self.deget[self.modul].keys())
             l.append(self.modul)
             nr_copies =  self.copies_input.value()
-            print_pdf(l,self.xvk+"-"+ self.modul +"-" +'.pdf',nr_copies)
+            print_pdf(l,self.xvk+"-"+ self.modul +"-" +'.pdf',nr_copies,self.use_qr)
         else:
             if self.module_field.text().strip():
                 self.dege_modul()
@@ -511,7 +564,7 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
                 l.append(d)
             l.append(str(self.module_field.text().strip()))
             print(l)
-            print_pdf(l,str(self.module_field.text().strip()) +'.pdf',nr_copies)
+            print_pdf(l,str(self.module_field.text().strip()) +'.pdf',nr_copies,self.use_qr)
         except pyodbc.Error as e:
             QMessageBox.warning(self, "Database error", str(e))
         finally:
@@ -610,13 +663,15 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
         dialog = SettingsDialog(self)
         if dialog.exec_() == QDialog.Accepted:
             dialog.save_settings()
+            self.use_qr = SETTINGS.value("use_qr", False) == 'true'
+            self.status.setText("Perdorimi i qr code eshte: " + str(self.use_qr))
     def print_all(self):
         self.submit()
         if self.xvk and self.to_print_all:
             l = self.to_print_all
             l.append(self.xvk)
             nr_copies =  self.copies_input.value()
-            print_pdf(l,self.xvk +'.pdf',nr_copies)
+            print_pdf(l,self.xvk +'.pdf',nr_copies,self.use_qr)
         else:
             QMessageBox.warning(self, "Mungojne te dhenat", "Ju lutem plotesoni XVK")
         

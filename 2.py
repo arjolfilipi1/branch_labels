@@ -7,16 +7,16 @@ from PyQt5.QtCore import Qt, QStringListModel, QSettings
 from PyQt5 import QtGui
 import os,sys
 import pyodbc
-from PIL import Image, ImageDraw, ImageFont
-from pylibdmtx.pylibdmtx import encode
+from PIL import Image
 import io
 from reportlab.lib.pagesizes import mm
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from io import BytesIO
-from PIL import Image
 import tempfile,time
-
+import qrcode
+import win32api
+import win32print
 # Convert mm to pixels
 def mm_to_px(mm,dpi):
     return int((mm / 25.4) * dpi)
@@ -69,24 +69,27 @@ def print_pdf(data_list, output_pdf,nr_copies):
                 c.setFont("Helvetica", font_size)
                 c.drawString(text_x, vertical_offset, item)
                 
-                # Generate DataMatrix barcode
-                encoded = encode(
-                    item.encode('utf-8'),
-                    size='SquareAuto'
+                qr = qrcode.QRCode(
+                    version=1,
+                    error_correction=qrcode.constants.ERROR_CORRECT_L,
+                    box_size=10,  # Adjust this to control the size
+                    border=4,
                 )
-                
+                qr.add_data(item.encode('utf-8'))
+                qr.make(fit=True)
+
                 # Create PIL Image
-                img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
-                
+                img = qr.make_image(fill_color="black", back_color="white")
+
                 # Prepare image for PDF
                 img_buffer = BytesIO()
                 img.save(img_buffer, format='PNG', dpi=(300, 300))
                 img_buffer.seek(0)
-                
+
                 # BARCODE (Right side) - Centered vertically with text
                 dm_x = label_width - dm_width - 1 * mm
                 dm_y = (label_height - dm_height) / 2  # Center vertically
-                
+
                 # Add to PDF
                 c.drawImage(
                     ImageReader(img_buffer),
@@ -100,9 +103,12 @@ def print_pdf(data_list, output_pdf,nr_copies):
                 c.showPage()
         
         c.save()
+        
         temp_pdf.close()
         time.sleep(0.5)
-        os.startfile(temp_pdf_path, 'print')
+        win32api.ShellExecute(0, "print", temp_pdf_path, None, ".", 0)
+        # os.startfile(temp_pdf_path, 'print')
+        
     except Exception as e:
         print(f"Printing failed: {str(e)}")
     finally:
@@ -154,24 +160,27 @@ def save_pdf(data_list, output_pdf,nr_copies):
             c.setFont("Helvetica", font_size)
             c.drawString(text_x, vertical_offset, item)
             
-            # Generate DataMatrix barcode
-            encoded = encode(
-                item.encode('utf-8'),
-                size='SquareAuto'
+            qr = qrcode.QRCode(
+                version=1,
+                error_correction=qrcode.constants.ERROR_CORRECT_L,
+                box_size=10,  # Adjust this to control the size
+                border=4,
             )
-            
+            qr.add_data(item.encode('utf-8'))
+            qr.make(fit=True)
+
             # Create PIL Image
-            img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
-            
+            img = qr.make_image(fill_color="black", back_color="white")
+
             # Prepare image for PDF
             img_buffer = BytesIO()
             img.save(img_buffer, format='PNG', dpi=(300, 300))
             img_buffer.seek(0)
-            
+
             # BARCODE (Right side) - Centered vertically with text
             dm_x = label_width - dm_width - 1 * mm
             dm_y = (label_height - dm_height) / 2  # Center vertically
-            
+
             # Add to PDF
             c.drawImage(
                 ImageReader(img_buffer),
@@ -221,6 +230,26 @@ class SettingsDialog(QDialog):
         dpi_layout.addWidget(self.dpi_edit)
         
         # sql2
+        self.sql = """
+                SELECT STRU.STKOMP AS XVK_MODULE 
+                FROM BIDBD220.STRU STRU 
+                WHERE STRU.STWKNR = '000' 
+                  AND STRU.STFIRM = '1' 
+                  AND STRU.STBGNR = ?
+            """
+        self.con = "Driver={{IBM i Access ODBC Driver}};System=192.168.100.35;UID={};PWD={};DBQ=QGPL;"
+        
+        self.sql_edit = QTextEdit()
+        self.sql_edit.setPlaceholderText(self.sql)
+        slq_layout = QHBoxLayout()
+        slq_layout.addWidget(self.sql_edit)
+        
+        self.con_edit = QTextEdit()
+        self.con_edit.setPlaceholderText(self.con)
+        con_layout = QHBoxLayout()
+        con_layout.addWidget(self.con_edit)
+        
+        # sql2
         self.sql2 = """
     SELECT vodiče.VON AS Nga_dega, KABELY.Forsch_Nr_kabelu AS Moduli, vodiče.BIS AS Tek_dega
     FROM (KABELY 
@@ -228,16 +257,27 @@ class SettingsDialog(QDialog):
     INNER JOIN vodiče ON [KABELY NA POZICE].Pozice = vodiče.POS
     WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
     """
+        self.con2 = "DSN=KomaxAL_Durres2;Driver={SQL Server};System=192.168.102.232;UID=komax;PWD=komax1;"
+        
         self.sql2_edit = QTextEdit()
         self.sql2_edit.setPlaceholderText(self.sql2)
         slq2_layout = QHBoxLayout()
         slq2_layout.addWidget(self.sql2_edit)
         
+        self.con2_edit = QTextEdit()
+        self.con2_edit.setPlaceholderText(self.con2)
+        con2_layout = QHBoxLayout()
+        con2_layout.addWidget(self.con2_edit)
+        
+        
         # Add to form
         layout.addRow("xPPS user:", db_layout)
         layout.addRow("Password:", password_layout)
-        layout.addRow("Vendos dpi e printerit:", dpi_layout)
+        layout.addRow("dpi e printerit:", dpi_layout)
+        layout.addRow("SQL e xpps:", slq_layout)
+        layout.addRow("Conn e xpps:", con_layout)
         layout.addRow("SQL e fijeve:", slq2_layout)
+        layout.addRow("Conn e fijeve:", con2_layout)
         
         # Dialog buttons
         buttons = QDialogButtonBox(QDialogButtonBox.Ok | QDialogButtonBox.Cancel)
@@ -260,13 +300,19 @@ class SettingsDialog(QDialog):
         self.db_path_edit.setText(SETTINGS.value("xpps/user", "FILIPI"))
         self.password_edit.setText(SETTINGS.value("xpps/password", "a110033"))
         self.dpi_edit.setText(SETTINGS.value("app/dpi", "300"))
+        self.sql_edit.setPlainText(SETTINGS.value("xpps/sql", self.sql))
+        self.con_edit.setPlainText(SETTINGS.value("xpps/con", self.con))
         self.sql2_edit.setPlainText(SETTINGS.value("komax/sql", self.sql2))
+        self.con2_edit.setPlainText(SETTINGS.value("komax/con", self.con2))
     
     def save_settings(self):
         SETTINGS.setValue("xpps/user", self.db_path_edit.text())
         SETTINGS.setValue("xpps/password", self.password_edit.text())
         SETTINGS.setValue("app/dpi", self.dpi_edit.text())
+        SETTINGS.setValue("xpps/sql", self.sql_edit.toPlainText())
+        SETTINGS.setValue("xpps/con", self.con_edit.toPlainText())
         SETTINGS.setValue("komax/sql", self.sql2_edit.toPlainText())
+        SETTINGS.setValue("komax/con", self.con2_edit.toPlainText())
 
 class MyApp(QWidget):
     
@@ -277,7 +323,8 @@ class MyApp(QWidget):
         self.apply_styles()
         self.manual_select = 0
     def setup_ui(self):
-        
+        printers = win32print.EnumPrinters(2)
+        print(printers)
         self.SQL_TEMPLATE_VODICE = """
 SELECT vodiče.VON AS Nga_dega, KABELY.Forsch_Nr_kabelu AS Moduli, vodiče.BIS AS Tek_dega
 FROM (KABELY 
@@ -285,7 +332,20 @@ INNER JOIN [KABELY NA POZICE] ON KABELY.Forsch_Nr_kabelu = [KABELY NA POZICE].Fo
 INNER JOIN vodiče ON [KABELY NA POZICE].Pozice = vodiče.POS
 WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
 """
+        self.con2 = "DSN=KomaxAL_Durres2;Driver={SQL Server};System=192.168.102.232;UID=komax;PWD=komax1;"
+        self.sql = """
+                SELECT STRU.STKOMP AS XVK_MODULE 
+                FROM BIDBD220.STRU STRU 
+                WHERE STRU.STWKNR = '000' 
+                  AND STRU.STFIRM = '1' 
+                  AND STRU.STBGNR = ?
+            """
+        self.con = "Driver={{IBM i Access ODBC Driver}};System=192.168.100.35;UID={};PWD={};DBQ=QGPL;"
+        
+        self.slq = SETTINGS.value("xpps/sql", self.sql)
+        self.con = SETTINGS.value("xpps/con", self.con)
         self.SQL_TEMPLATE_VODICE = SETTINGS.value("komax/sql", self.SQL_TEMPLATE_VODICE)
+        self.con2 = SETTINGS.value("komax/con", self.con2)
         self.xvk = ""
         self.modul =""
         self.to_print_all = []
@@ -298,6 +358,7 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
         form_layout = QVBoxLayout()
         button_layout = QHBoxLayout()
         button_layout2 = QHBoxLayout()
+        status_layout = QHBoxLayout()
 
         # Top bar with Settings button
         self.settings_button = QPushButton("Parametra")
@@ -359,6 +420,8 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
         self.print_button.clicked.connect(self.print_all)
         
         button_layout2.addWidget(self.print_button)
+        self.status = QLabel()
+        status_layout.addWidget(self.status)
         
         # one Field
         self.one_field = QLineEdit()
@@ -380,6 +443,7 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
         main_layout.addLayout(form_layout)
         main_layout.addLayout(button_layout)
         main_layout.addLayout(button_layout2)
+        main_layout.addLayout(status_layout)
 
         self.setLayout(main_layout)
         
@@ -411,7 +475,8 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
         self.manual_select += 1
         self.module_field.setText(item.text())
         self.modul = item.text().strip()
-        print(f"Clicked item text: {item.text()}")
+        print(f"Perzgjodhet: {item.text()}")
+        self.status.setText(f"Perzgjodhet: {item.text()}")
         
     def dege_modul(self):
         nr_copies =  self.copies_input.value()
@@ -422,13 +487,7 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
         # text01 = "'444000801015'"
         if not text01:
             return None
-        connection_string2 = (
-                    "DSN=KomaxAL_Durres2;"
-                    "Driver={SQL Server};"
-                    "System=192.168.102.232;"
-                    "UID=komax;"
-                    "PWD=komax1;"
-                )
+        connection_string2 = self.con2
         # print(text01)
         # SQL query with Unicode character Č (U+010D) and formatted IN clause
         sql2 = self.SQL_TEMPLATE_VODICE.format(text01)
@@ -451,10 +510,9 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
             for d in dega.keys():
                 l.append(d)
             l.append(str(self.module_field.text().strip()))
-            
+            print(l)
             print_pdf(l,str(self.module_field.text().strip()) +'.pdf',nr_copies)
         except pyodbc.Error as e:
-            print("Database error:", e)
             QMessageBox.warning(self, "Database error", str(e))
         finally:
             if 'conn2' in locals():
@@ -571,21 +629,13 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
 
             # Connection string
             connection_string = (
-                "Driver={IBM i Access ODBC Driver};"
-                "System=192.168.100.35;"
-                "DBQ=QGPL;"
-                f"UID={uid};"
-                f"PWD={pw};"
+ 
+ self.con.format(uid,pw)
+            
             )
 
             # SQL Query (using parameterized query to avoid SQL injection)
-            sql = """
-                SELECT STRU.STKOMP AS XVK_MODULE 
-                FROM BIDBD220.STRU STRU 
-                WHERE STRU.STWKNR = '000' 
-                  AND STRU.STFIRM = '1' 
-                  AND STRU.STBGNR = ?
-            """
+            sql = self.sql
 
             try:
                 dega= {}
@@ -601,16 +651,9 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
                 rows = cursor.fetchall()
                 module_list = []
                 for row in rows:
-                    # print(f"XVK_MODULE: {row.XVK_MODULE}")
                     module_list.append(row.XVK_MODULE)
                 
-                connection_string2 = (
-                    "DSN=KomaxAL_Durres2;"
-                    "Driver={SQL Server};"
-                    "System=192.168.102.232;"
-                    "UID=komax;"
-                    "PWD=komax1;"
-                )
+                connection_string2 = self.con2
                 text01 = ', '.join("'"+str(id)+"'" for id in module_list)
                 # print(text01)
                 # SQL query with Unicode character Č (U+010D) and formatted IN clause
@@ -635,22 +678,20 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
                             m_d[row.Moduli] = {}
                             m_d[row.Moduli][row.Nga_dega] = 1
                             m_d[row.Moduli][row.Tek_dega] = 1
-                        # print(f"Nga_dega: {row.Nga_dega}, Tek_dega: {row.Tek_dega}")
+                        
                     self.to_print_all = sorted(dega.keys())
                     self.deget = m_d
                     for key in sorted(module_list):
                         self.list_widget.addItem(QListWidgetItem(key))
                 except pyodbc.Error as e:
                     QMessageBox.warning(self, "Database error", str(e))
-                    print("Database error:", e)
-
+                    
                 finally:
                     if 'conn2' in locals():
                         conn2.close()
             except pyodbc.Error as e:
                 QMessageBox.warning(self, "Database error", str(e))
-                print("Database error:", e)
-
+                
             finally:
                 if 'conn' in locals():
                     conn.close()
@@ -669,24 +710,10 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
         self.deget = {}
         self.input_field.clear()
         self.list_widget.clear()
-def set_qt_plugin_path():
-    # Set the QT_PLUGIN_PATH environment variable
-    if getattr(sys, 'frozen', False):
-        # Running in PyInstaller bundle
-        os.environ['QT_PLUGIN_PATH'] = os.path.join(
-            sys._MEIPASS, 'PyQt5', 'Qt', 'plugins'
-        )
-    else:
-        # Running in normal Python environment
-        os.environ['QT_PLUGIN_PATH'] = QLibraryInfo.location(
-            QLibraryInfo.PluginsPath
-        )
-
-set_qt_plugin_path()
 
 if __name__ == "__main__":
     app = QApplication(sys.argv)
     window = MyApp()
-    window.resize(350, 650)
+    window.resize(450, 650)
     window.show()
     sys.exit(app.exec_())

@@ -7,14 +7,14 @@ from PyQt5.QtCore import Qt, QStringListModel, QSettings
 import os,sys
 import pyodbc
 from PIL import Image, ImageDraw, ImageFont
-from pylibdmtx.pylibdmtx import encode
+# from pylibdmtx.pylibdmtx import encode
 import io
 from reportlab.lib.pagesizes import mm
 from reportlab.pdfgen import canvas
 from reportlab.lib.utils import ImageReader
 from io import BytesIO
 from PIL import Image
-
+import qrcode
 # Convert mm to pixels
 def mm_to_px(mm,dpi):
     return int((mm / 25.4) * dpi)
@@ -53,7 +53,7 @@ def save_pdf(data_list, output_pdf="labels.pdf"):
         text_height_actual = font_size * 1.2  # Approximate text height
         
         # Calculate horizontal centering for text
-        text_x = (text_width - text_width_actual) / 2
+        text_x = 3
         
         # Calculate vertical centering - accounts for actual text height
         vertical_offset = (label_height - text_height_actual) / 2
@@ -62,24 +62,27 @@ def save_pdf(data_list, output_pdf="labels.pdf"):
         c.setFont("Helvetica", font_size)
         c.drawString(text_x, vertical_offset, item)
         
-        # Generate DataMatrix barcode
-        encoded = encode(
-            item.encode('utf-8'),
-            size='SquareAuto'
+        qr = qrcode.QRCode(
+            version=1,
+            error_correction=qrcode.constants.ERROR_CORRECT_L,
+            box_size=10,  # Adjust this to control the size
+            border=4,
         )
-        
+        qr.add_data(item.encode('utf-8'))
+        qr.make(fit=True)
+
         # Create PIL Image
-        img = Image.frombytes('RGB', (encoded.width, encoded.height), encoded.pixels)
-        
+        img = qr.make_image(fill_color="black", back_color="white")
+
         # Prepare image for PDF
         img_buffer = BytesIO()
         img.save(img_buffer, format='PNG', dpi=(300, 300))
         img_buffer.seek(0)
-        
+
         # BARCODE (Right side) - Centered vertically with text
         dm_x = label_width - dm_width - 1 * mm
         dm_y = (label_height - dm_height) / 2  # Center vertically
-        
+
         # Add to PDF
         c.drawImage(
             ImageReader(img_buffer),

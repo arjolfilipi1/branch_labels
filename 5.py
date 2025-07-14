@@ -63,6 +63,22 @@ class PrintSettingsDialog(QDialog):
         dpi_layout = QHBoxLayout()
         dpi_layout.addWidget(self.dpi_edit)
         
+        # min_font
+        self.min_font_edit = QSpinBox()
+        self.min_font_edit.setValue(6)
+        self.min_font_edit.setMinimum(3)
+        self.min_font_edit.setMaximum(25)
+        min_font_layout = QHBoxLayout()
+        min_font_layout.addWidget(self.min_font_edit)
+        
+        # max_font
+        self.max_font_edit = QSpinBox()
+        self.max_font_edit.setValue(25)
+        self.max_font_edit.setMinimum(3)
+        self.max_font_edit.setMaximum(25)
+        max_font_layout = QHBoxLayout()
+        max_font_layout.addWidget(self.max_font_edit)
+        
         # width
         self.width_edit = QSpinBox()
         self.width_edit.setValue(50)
@@ -95,6 +111,8 @@ class PrintSettingsDialog(QDialog):
         layout.addRow("Perdor Printim automatik:", s_print_layout)
         layout.addRow("dpi e printerit:", dpi_layout)
         layout.addRow("gjeresi e etiketes (mm):", width_layout)
+        layout.addRow("madhesia min e textit:", min_font_layout)
+        layout.addRow("madhesia max e textit:", max_font_layout)
         layout.addRow("lartesia e etiketes (mm):", height_layout)
         layout.addRow("Fillimi i shkrimit (mm):", offset_layout)
         
@@ -143,6 +161,8 @@ class PrintSettingsDialog(QDialog):
             self.checkbox.setChecked(True)
         self.dpi_edit.setValue(int(SETTINGS.value("app/dpi", 300)))
         self.width_edit.setValue(int(SETTINGS.value("print/width", 49)))
+        self.min_font_edit.setValue(int(SETTINGS.value("min_font", 6)))
+        self.max_font_edit.setValue(int(SETTINGS.value("max_font", 25)))
         self.height_edit.setValue(int(SETTINGS.value("print/height", 10)))
         self.offset_edit.setValue(int(SETTINGS.value("print/offset", 2)))
     
@@ -156,6 +176,8 @@ class PrintSettingsDialog(QDialog):
         SETTINGS.setValue("use_qr", self.checkbox.isChecked())
         SETTINGS.setValue("simple_print", self.s_print.isChecked())
         SETTINGS.setValue("app/dpi", str(self.dpi_edit.value()))
+        SETTINGS.setValue("min_font", str(self.min_font_edit.value()))
+        SETTINGS.setValue("max_font", str(self.max_font_edit.value()))
         SETTINGS.setValue("print/width", str(self.width_edit.value()))
         SETTINGS.setValue("print/height", str(self.height_edit.value()))
         SETTINGS.setValue("print/offset", str(self.offset_edit.value()))
@@ -339,7 +361,7 @@ class MyApp(QWidget):
         label_height =self.label_height * mm
         
         # Text area dimensions
-        text_width = 39 * mm
+        text_width = (self.label_width - 10) * mm
         text_height = 9 * mm  # Available height for text
         
         # Data matrix dimensions
@@ -361,16 +383,16 @@ class MyApp(QWidget):
                     c.setPageSize((label_width, label_height))
                     
                     # TEXT (Left side)
-                    font_size = 6
+                    font_size = self.max_font
                     c.setFont("Helvetica", font_size)
                     
                     # Adjust font size if needed
-                    while c.stringWidth(item, "Helvetica", font_size) > text_width - 1*mm and font_size > 3:
+                    while c.stringWidth(item, "Helvetica", font_size) > ((text_width ) - (self.label_offset*mm*2)) and font_size > self.min_font:
                         font_size -= 0.5
                     
                     # Calculate text metrics for vertical centering
                     text_width_actual = c.stringWidth(item, "Helvetica", font_size)
-                    text_height_actual = font_size * 1.2  # Approximate text height
+                    text_height_actual = font_size * 0.8  # Approximate text height
                     
                     # Calculate horizontal centering for text
                     text_x = self.label_offset*mm
@@ -459,9 +481,8 @@ class MyApp(QWidget):
         label_height =self.label_height * mm
         
         # Text area dimensions
-        text_width = 39 * mm
+        text_width = (self.label_width - 10) * mm
         text_height = 9 * mm  # Available height for text
-        
         # Data matrix dimensions
         dm_width = 10 * mm
         dm_height = 10 * mm
@@ -475,16 +496,16 @@ class MyApp(QWidget):
                 c.setPageSize((label_width, label_height))
                 
                 # TEXT (Left side)
-                font_size = 6
+                font_size = self.max_font
                 c.setFont("Helvetica", font_size)
                 
                 # Adjust font size if needed
-                while c.stringWidth(item, "Helvetica", font_size) > text_width - 1*mm and font_size > 3:
-                    font_size -= 0.5
                 
+                while c.stringWidth(item, "Helvetica", font_size) > ((text_width ) - (self.label_offset*mm*2)) and font_size > self.min_font:
+                    font_size -= 0.5
                 # Calculate text metrics for vertical centering
                 text_width_actual = c.stringWidth(item, "Helvetica", font_size)
-                text_height_actual = font_size * 1.2  # Approximate text height
+                text_height_actual = font_size * 0.8   # Approximate text height
                 
                 # Calculate horizontal centering for text
                 text_x = self.label_offset*mm
@@ -565,13 +586,16 @@ class MyApp(QWidget):
         self.con2 = SETTINGS.value("komax/con", self.con2)
         self.use_qr = SETTINGS.value("use_qr", False) == 'true'
         self.dpi = int(SETTINGS.value("app/dpi", 300))
+        self.min_font = int(SETTINGS.value("min_font", 6))
+        self.max_font = int(SETTINGS.value("max_font", 25))
         self.index_printer = int(SETTINGS.value("index_printer", 0))
         self.label_width = int(SETTINGS.value("print/width", 50))
         self.label_height = int(SETTINGS.value("print/height", 10))
         self.label_offset = int(SETTINGS.value("print/offset", 2))
         self.simple_print = SETTINGS.value("simple_print", False) == 'true'
     def setup_ui(self):
-        printers = win32print.EnumPrinters(2)
+        self.min_font = int(SETTINGS.value("min_font", 6))
+        self.max_font = int(SETTINGS.value("max_font", 25))
         self.index_printer = int(SETTINGS.value("index_printer", 0))
         self.dpi = int(SETTINGS.value("app/dpi", 300))
         self.label_width = int(SETTINGS.value("print/width", 50))
@@ -588,6 +612,7 @@ INNER JOIN [KABELY NA POZICE] ON KABELY.Forsch_Nr_kabelu = [KABELY NA POZICE].Fo
 INNER JOIN vodiče ON [KABELY NA POZICE].Pozice = vodiče.POS
 WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
 """
+        self.con = "Driver={{IBM i Access ODBC Driver}};System=192.168.100.35;UID={};PWD={};DBQ=QGPL;"
         self.con2 = "DSN=KomaxAL_Durres2;Driver={SQL Server};System=192.168.102.232;UID=komax;PWD=komax1;"
         self.sql = """
                 SELECT STRU.STKOMP AS XVK_MODULE 
@@ -596,8 +621,7 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
                   AND STRU.STFIRM = '1' 
                   AND STRU.STBGNR = ?
             """
-        self.con = "Driver={{IBM i Access ODBC Driver}};System=192.168.100.35;UID={};PWD={};DBQ=QGPL;"
-        
+        self.get_settings()
         
         self.xvk = ""
         self.modul =""
@@ -908,6 +932,7 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
             sql = self.sql
 
             try:
+                self.list_widget.clear()
                 dega= {}
                 m_d= {}
                 # Connect
@@ -952,6 +977,7 @@ WHERE KABELY.Forsch_Nr_kabelu IN ({}) AND vodiče.MAT <> 'Wellrohr';
                     self.deget = m_d
                     for key in sorted(module_list):
                         self.list_widget.addItem(QListWidgetItem(key))
+                    self.status.setText(f"U ngarkuar modulet per XVK{str(text)}")
                 except pyodbc.Error as e:
                     QMessageBox.warning(self, "Database error", str(e))
                     

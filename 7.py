@@ -360,7 +360,8 @@ class MyApp(QWidget):
             printer_name = SETTINGS.value("saved_printer", "")
             if not printer_name:
                 printer_name = win32print.GetDefaultPrinter()
-                
+            page_width_px  = None
+            page_height_px = None
             for i in range(len(doc)):
                 try:
                     page = doc[i]
@@ -368,7 +369,7 @@ class MyApp(QWidget):
                     image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
 
                     self.status.setText(f"Printing page {i + 1}")
-
+                    
                     # Resize image to fixed size
                     resized = image.resize((width_px, height_px), Image.NEAREST)
 
@@ -379,10 +380,12 @@ class MyApp(QWidget):
                     # Start printing
                     hdc.StartDoc(f"PDF Page {i+1}")
                     hdc.StartPage()
-
+                    if not page_width_px:
+                        page_width_px = hdc.GetDeviceCaps(win32con.HORZRES)  # Printable area width
+                        page_height_px = hdc.GetDeviceCaps(win32con.VERTRES)  # Printable area height
                     # Draw the image at 0,0 with 50x10mm size (in pixels)
                     dib = ImageWin.Dib(resized)
-                    dib.draw(hdc.GetHandleOutput(), (0, 0, width_px, height_px))
+                    dib.draw(hdc.GetHandleOutput(), (center_x+h_off, center_y+v_off, center_x + width_px +h_off, center_y + height_px+v_off))
 
                     hdc.EndPage()
                     hdc.EndDoc()

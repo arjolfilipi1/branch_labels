@@ -350,6 +350,7 @@ AND LSLANR IN ('3G','3H') AND LSTENR IN ({})"""
                         else:
                             mat_ava[row.LSTENR] = [mat_ava[row.LSTENR][0] + row.LSLGBE, mat_ava[row.LSTENR][1] + "," +row.LSLANR if row.LSLANR not in mat_ava[row.LSTENR][1] else mat_ava[row.LSTENR][1]]
                     print(mat_ava)
+                    #add the resulting data to a table
             except pyodbc.Error as e:
                 QMessageBox.warning(self, "Database error XPPS", str(e))
 
@@ -559,4 +560,5 @@ if __name__ == "__main__":
     window = MyApp()
     window.resize(450, 650)
     window.show()
+
     sys.exit(app.exec_())
